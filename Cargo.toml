@@ -1,0 +1,7 @@
+[workspace]
+members = ["pap-config", "pap-executor", "pap-run"]
+resolver = "2"
+
+[workspace.package]
+license = "BSD-2-Clause"
+readme = "README.md"

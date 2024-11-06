@@ -1,0 +1,12 @@
+[package]
+name = "pap-executor"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+readme.workspace = true
+
+[dependencies]
+anyhow = "1"
+pap-config = { path = "../pap-config" }
+serde_yaml = "0.9.34"
+thiserror = "2"
