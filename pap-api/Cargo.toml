@@ -1,0 +1,17 @@
+[package]
+name = "pap-api"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+readme.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+schemars = { workspace = true }
+serde_json = { workspace = true, optional = true }
+serde_yaml = { workspace = true }
+sqlx = { workspace = true, optional = true }
+tarpc = { workspace = true }
+strum = { version = "0.26.3", features = ["derive"] }

@@ -1,12 +1,7 @@
-mod default;
-#[cfg(test)]
-mod test;
-
 use std::{collections::HashMap, io::Read};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
 
 /// A Config defines how to preform some analysis. The config has two sections:
 /// projects and jobs.
@@ -20,7 +15,7 @@ use serde::{Deserialize, Serialize};
 /// steps have to be built in to the executor. In the future, they could be
 /// dynamically loaded, scripted, as a "module", similar to github actions,
 /// "actions", or written directly in the config for short routines.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct Config {
     /// This defines the projects that will be used by jobs.
     pub projects: Vec<Project>,
@@ -52,7 +47,7 @@ pub struct LoaderConfig {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct MMIOEntry {
     pub address: u64,
-    #[serde(default = "default::one")]
+    #[serde(default = "one")]
     pub size: u64,
     pub handler: String,
 }
@@ -63,21 +58,19 @@ pub struct Job {
     pub steps: Vec<Step>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
-#[serde(untagged)]
-pub enum ArgType {
-    Bool(bool),
-    Int(i64),
-    String(String),
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct Step {
     pub name: String,
     pub call: String,
-    pub args: HashMap<String, ArgType>,
+    pub args: HashMap<String, String>,
+    #[serde(default)]
+    pub io: HashMap<String, String>,
 }
 
 pub fn load_config(reader: impl Read) -> Result<Config, serde_yaml::Error> {
     serde_yaml::from_reader(reader)
+}
+
+fn one() -> u64 {
+    1
 }

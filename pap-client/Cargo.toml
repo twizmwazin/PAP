@@ -1,0 +1,15 @@
+[package]
+name = "pap-client"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+readme.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+colored = "2"
+pap-api = { path = "../pap-api" }
+tarpc = { workspace = true }
+thiserror = { workspace = true}
+tokio = { workspace = true }

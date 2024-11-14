@@ -1,5 +1,5 @@
 [package]
-name = "pap-run"
+name = "pap-server"
 version = "0.1.0"
 edition = "2021"
 license.workspace = true
@@ -7,11 +7,14 @@ readme.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
-futures-util = "0.3.31"
+clap = { workspace = true }
+env_logger = { workspace = true }
 pap-api = { path = "../pap-api", features = ["serde_json", "sqlx"] }
-pap-server = { path = "../pap-server" }
+tarpc = { workspace = true }
+serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 sqlx = { workspace = true }
-# This should be able to be removed with some light refactoring
-tarpc = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
+futures = "0.3.31"
+

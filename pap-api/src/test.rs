@@ -13,5 +13,5 @@ fn test_load_sample_config() {
     assert_eq!(config.projects[0].name, "testbin");
     assert_eq!(config.projects[0].binary, "test.bin");
     assert_eq!(config.jobs.len(), 1);
-    assert_eq!(config.jobs[0].steps[0].args["function"], ArgType::Int(0x8074e50));
+    assert_eq!(config.jobs[0].steps[0].args["function"], "0x8074e50");
 }

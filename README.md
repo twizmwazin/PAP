@@ -11,6 +11,7 @@ workflows rather than general software development workflows.
 PAP consists of a number of crates designed to maximize code reusability.
 Currently, these are:
 
-- `pap-config` - A crate for defining the configuration of a PAP pipeline.
-- `pap-pipeline` - A library crate for executing PAP pipelines.
-- `pap-run` - A binary crate for running PAP pipelines locally.
+- `pap-api` - A crate that defines all of the public API types used by PAP.
+- `pap-client` - A CLI client for interacting with PAP servers.
+- `pap-run` - A program to run one-off PAP pipelines.
+- `pap-server` - A server that runs PAP pipelines submitted over the network.
