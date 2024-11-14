@@ -6,7 +6,7 @@ use pap_api::{ExecutionStatus, JobStatus, PapApi, PapError, PipelineStatus, Step
 use sqlx::{Pool, Sqlite};
 use tarpc::context::Context;
 
-use crate::{queries, step::StepContext, step::StepExecutorRegistry, storage::SqlStorage};
+use crate::{queries, step::StepContext, step::StepExecutorRegistry};
 
 #[derive(Clone)]
 pub struct PipelineServer {
@@ -81,13 +81,13 @@ impl PipelineServer {
         })
     }
 
-    async fn execute_step(&self, step: &StepStatus, storage: &SqlStorage) -> Result<()> {
+    async fn execute_step(&self, step: &StepStatus) -> Result<()> {
         let executor = self
             .registry
             .get(&step.config.call)
             .ok_or_else(|| anyhow::anyhow!("step executor not found: {}", step.config.call))?;
 
-        let mut context = StepContext::new(&step.config.args, storage);
+        let mut context = StepContext::new(&step.config.args, &self.db);
 
         let result = executor.execute(&mut context);
 
@@ -98,8 +98,6 @@ impl PipelineServer {
     }
 
     async fn execute(&self, pipeline: &PipelineStatus) -> Result<()> {
-        let storage = SqlStorage::new(self.db.clone());
-
         queries::set_pipeline_status(&self.db, pipeline.id, ExecutionStatus::Running).await?;
 
         for job_id in &pipeline.jobs {
@@ -121,7 +119,7 @@ impl PipelineServer {
 
                 queries::set_step_status(&self.db, step.id, ExecutionStatus::Running).await?;
 
-                match self.execute_step(step, &storage).await {
+                match self.execute_step(step).await {
                     Ok(_) => {
                         queries::set_step_status(&self.db, step.id, ExecutionStatus::Completed)
                             .await?;

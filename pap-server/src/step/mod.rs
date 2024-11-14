@@ -1,26 +1,38 @@
 pub mod hello;
 
-use crate::storage::SqlStorage;
 use anyhow::Result;
+use sqlx::SqlitePool;
 use std::collections::HashMap;
 
 /// Context provided to a step during execution
 pub struct StepContext<'a> {
     /// Arguments from the config
     pub args: &'a HashMap<String, String>,
-    /// IO storage interface
-    pub storage: &'a SqlStorage,
+    /// Database pool for storage operations
+    pool: &'a SqlitePool,
     /// Log buffer
     log_buffer: Vec<u8>,
 }
 
 impl<'a> StepContext<'a> {
-    pub fn new(args: &'a HashMap<String, String>, storage: &'a SqlStorage) -> Self {
+    pub fn new(args: &'a HashMap<String, String>, pool: &'a SqlitePool) -> Self {
         Self {
             args,
-            storage,
+            pool,
             log_buffer: Vec::new(),
         }
+    }
+
+    pub async fn read_object(&self, namespace: &str, key: &str) -> Result<Vec<u8>> {
+        crate::queries::get_object(self.pool, namespace, key.as_bytes())
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn write_object(&self, namespace: &str, key: &str, data: &[u8]) -> Result<()> {
+        crate::queries::put_object(self.pool, namespace, key.as_bytes(), data)
+            .await
+            .map_err(Into::into)
     }
 
     pub fn log(&mut self, message: &str) {
