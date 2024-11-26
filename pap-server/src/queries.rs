@@ -1,9 +1,11 @@
 use std::str::FromStr;
 
+use anyhow::Result;
+use crate::db::with_pool;
 use pap_api::{ExecutionStatus, JobStatus, PapError, PipelineStatus, Step, StepStatus};
-use sqlx::{Error, Row, SqlitePool};
+use sqlx::Row;
 
-pub(crate) async fn init_tables(pool: &SqlitePool) -> Result<(), Error> {
+pub(crate) async fn init_tables() -> Result<()> {
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS pipelines (
@@ -14,76 +16,79 @@ pub(crate) async fn init_tables(pool: &SqlitePool) -> Result<(), Error> {
         )
         "#,
     )
-    .execute(pool)
+    .execute(&with_pool()?)
     .await?;
 
     sqlx::query(
         r#"
-        CREATE TABLE IF NOT EXISTS jobs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            pipeline_id INTEGER,
-            name TEXT,
-            status TEXT DEFAULT 'Pending',
-            current_step INTEGER DEFAULT 0,
-            FOREIGN KEY(pipeline_id) REFERENCES pipelines(id)
-        )
-        "#,
+            CREATE TABLE IF NOT EXISTS jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pipeline_id INTEGER,
+                name TEXT,
+                status TEXT DEFAULT 'Pending',
+                current_step INTEGER DEFAULT 0,
+                FOREIGN KEY(pipeline_id) REFERENCES pipelines(id)
+            )
+            "#,
     )
-    .execute(pool)
+    .execute(&with_pool()?)
     .await?;
 
     sqlx::query(
         r#"
-        CREATE TABLE IF NOT EXISTS steps (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_id INTEGER,
-            name TEXT,
-            call TEXT,
-            args TEXT,
-            status TEXT DEFAULT 'Pending',
-            log_data BLOB,
-            FOREIGN KEY(job_id) REFERENCES jobs(id)
-        )
-        "#,
+            CREATE TABLE IF NOT EXISTS steps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER,
+                pipeline_id INTEGER,
+                name TEXT,
+                call TEXT,
+                args TEXT,
+                io TEXT,
+                status TEXT DEFAULT 'Pending',
+                log_data BLOB,
+                FOREIGN KEY(job_id) REFERENCES jobs(id),
+                FOREIGN KEY(pipeline_id) REFERENCES pipelines(id)
+            )
+            "#,
     )
-    .execute(pool)
+    .execute(&with_pool()?)
     .await?;
 
     sqlx::query(
         r#"
-        CREATE TABLE IF NOT EXISTS objects (
-            namespace TEXT,
-            key BLOB,
-            value BLOB,
-            PRIMARY KEY (namespace, key)
-        )
-        "#,
+            CREATE TABLE IF NOT EXISTS objects (
+                namespace TEXT,
+                key BLOB,
+                value BLOB,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (namespace, key)
+            )
+            "#,
     )
-    .execute(pool)
+    .execute(&with_pool()?)
     .await?;
 
     sqlx::query(
         r#"
-        CREATE TABLE IF NOT EXISTS global_errors (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            pipeline_id INTEGER,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            error_message TEXT,
-            FOREIGN KEY(pipeline_id) REFERENCES pipelines(id)
-        )
-        "#,
+            CREATE TABLE IF NOT EXISTS global_errors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pipeline_id INTEGER,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                error_message TEXT,
+                FOREIGN KEY(pipeline_id) REFERENCES pipelines(id)
+            )
+            "#,
     )
-    .execute(pool)
+    .execute(&with_pool()?)
     .await?;
 
     Ok(())
 }
 
 pub(crate) async fn set_pipeline_status(
-    db: &SqlitePool,
     pipeline_id: u32,
     status: ExecutionStatus,
-) -> Result<(), Error> {
+) -> Result<()> {
     sqlx::query(
         r#"
         UPDATE pipelines SET execution_status = ? WHERE id = ?
@@ -91,17 +96,13 @@ pub(crate) async fn set_pipeline_status(
     )
     .bind(status.to_string())
     .bind(pipeline_id)
-    .execute(db)
+    .execute(&with_pool()?)
     .await?;
 
     Ok(())
 }
 
-pub(crate) async fn set_job_status(
-    db: &SqlitePool,
-    job_id: u32,
-    status: ExecutionStatus,
-) -> Result<(), Error> {
+pub(crate) async fn set_job_status(job_id: u32, status: ExecutionStatus) -> Result<()> {
     sqlx::query(
         r#"
         UPDATE jobs SET status = ? WHERE id = ?
@@ -109,50 +110,39 @@ pub(crate) async fn set_job_status(
     )
     .bind(status.to_string())
     .bind(job_id)
-    .execute(db)
+    .execute(&with_pool()?)
     .await?;
     Ok(())
 }
 
-pub(crate) async fn set_step_status(
-    db: &SqlitePool,
-    step_id: u32,
-    status: ExecutionStatus,
-) -> Result<(), Error> {
+pub(crate) async fn set_step_status(step_id: u32, status: ExecutionStatus) -> Result<()> {
     sqlx::query(
         r#"
-        UPDATE steps SET status = ? WHERE id = ?
-        "#,
+            UPDATE steps SET status = ? WHERE id = ?
+            "#,
     )
     .bind(status.to_string())
     .bind(step_id)
-    .execute(db)
+    .execute(&with_pool()?)
     .await?;
     Ok(())
 }
 
-pub(crate) async fn set_step_log(
-    db: &SqlitePool,
-    step_id: u32,
-    log_data: &[u8],
-) -> Result<(), Error> {
+pub(crate) async fn set_step_log(step_id: u32, log_data: &[u8]) -> Result<()> {
     sqlx::query(
         r#"
-        UPDATE steps SET log_data = ? WHERE id = ?
-        "#,
+            UPDATE steps SET log_data = ? WHERE id = ?
+            "#,
     )
     .bind(log_data)
     .bind(step_id)
-    .execute(db)
+    .execute(&with_pool()?)
     .await?;
     Ok(())
 }
 
-pub(crate) async fn store_error(
-    db: &SqlitePool,
-    pipeline_id: u32,
-    error: &str,
-) -> Result<(), Error> {
+pub(crate) async fn store_error(pipeline_id: u32, error: &str) -> Result<()> {
+    let db = with_pool()?;
     let mut tx = db.begin().await?;
 
     sqlx::query(r#"UPDATE pipelines SET execution_status = ? WHERE id = ?"#)
@@ -174,31 +164,28 @@ pub(crate) async fn store_error(
     Ok(())
 }
 
-pub(crate) async fn get_pipeline_status(
-    db: &SqlitePool,
-    id: u32,
-) -> anyhow::Result<PipelineStatus> {
+pub(crate) async fn get_pipeline_status(id: u32) -> anyhow::Result<PipelineStatus> {
     let pipeline = sqlx::query(
         r#"
-            SELECT config, context, execution_status
-            FROM pipelines
-            WHERE id = ?
-            "#,
+        SELECT config, context, execution_status
+        FROM pipelines
+        WHERE id = ?
+        "#,
     )
     .bind(id)
-    .fetch_optional(db)
+    .fetch_optional(&with_pool()?)
     .await?
     .ok_or_else(|| PapError::NotFound(format!("Pipeline {}", id)))?;
 
     let jobs = sqlx::query_scalar(
         r#"
-            SELECT id
-            FROM jobs
-            WHERE pipeline_id = ?
-            "#,
+        SELECT id
+        FROM jobs
+        WHERE pipeline_id = ?
+        "#,
     )
     .bind(id)
-    .fetch_all(db)
+    .fetch_all(&with_pool()?)
     .await?;
 
     Ok(PipelineStatus {
@@ -210,29 +197,29 @@ pub(crate) async fn get_pipeline_status(
     })
 }
 
-pub(crate) async fn get_job_status(db: &SqlitePool, id: u32) -> anyhow::Result<JobStatus> {
+pub(crate) async fn get_job_status(id: u32) -> anyhow::Result<JobStatus> {
     let job = sqlx::query(
         r#"
-            SELECT pipeline_id, name, status, current_step
-            FROM jobs
-            WHERE id = ?
-            "#,
+                SELECT pipeline_id, name, status, current_step
+                FROM jobs
+                WHERE id = ?
+                "#,
     )
     .bind(id)
-    .fetch_optional(db)
+    .fetch_optional(&with_pool()?)
     .await?
     .ok_or_else(|| PapError::NotFound(format!("Job {}", id)))?;
 
     let steps = sqlx::query(
         r#"
-            SELECT id, name, call, args, status, log_data
-            FROM steps
-            WHERE job_id = ?
-            ORDER BY id ASC
-            "#,
+                SELECT id, name, call, args, io, status, log_data
+                FROM steps
+                WHERE job_id = ?
+                ORDER BY id ASC
+                "#,
     )
     .bind(id)
-    .fetch_all(db)
+    .fetch_all(&with_pool()?)
     .await?;
 
     let step_statuses = steps
@@ -244,10 +231,10 @@ pub(crate) async fn get_job_status(db: &SqlitePool, id: u32) -> anyhow::Result<J
                     name: step.get(1),
                     call: step.get(2),
                     args: serde_json::from_str(step.get(3))?,
-                    io: Default::default(),
+                    io: serde_json::from_str(step.get(4))?, // Parse io config
                 },
-                status: ExecutionStatus::from_str(&step.get::<String, _>(4))?,
-                output: step.get(5),
+                status: ExecutionStatus::from_str(&step.get::<String, _>(5))?,
+                output: step.get(6),
             })
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
@@ -262,16 +249,16 @@ pub(crate) async fn get_job_status(db: &SqlitePool, id: u32) -> anyhow::Result<J
 }
 
 #[allow(dead_code)]
-pub(crate) async fn get_step_status(db: &SqlitePool, id: u32) -> anyhow::Result<StepStatus> {
+pub(crate) async fn get_step_status(id: u32) -> anyhow::Result<StepStatus> {
     let step = sqlx::query(
         r#"
-            SELECT job_id, name, call, args, status, log_data
-            FROM steps
-            WHERE id = ?
-            "#,
+        SELECT job_id, name, call, args, io, status, log_data
+        FROM steps
+        WHERE id = ?
+        "#,
     )
     .bind(id)
-    .fetch_optional(db)
+    .fetch_optional(&with_pool()?)
     .await?
     .ok_or_else(|| PapError::NotFound(format!("Step {}", id)))?;
 
@@ -281,22 +268,18 @@ pub(crate) async fn get_step_status(db: &SqlitePool, id: u32) -> anyhow::Result<
             name: step.get(1),
             call: step.get(2),
             args: serde_json::from_str(step.get(3))?,
-            io: Default::default(),
+            io: serde_json::from_str(step.get(4))?, // Parse io config
         },
-        status: ExecutionStatus::from_str(&step.get::<String, _>(4))?,
-        output: step.get(5),
+        status: ExecutionStatus::from_str(&step.get::<String, _>(5))?,
+        output: step.get(6),
     })
 }
 
-pub(crate) async fn get_object(
-    db: &SqlitePool,
-    namespace: &str,
-    key: &[u8],
-) -> Result<Vec<u8>, PapError> {
+pub(crate) async fn get_object(namespace: &str, key: &[u8]) -> Result<Vec<u8>, PapError> {
     sqlx::query_scalar::<_, Vec<u8>>("SELECT value FROM objects WHERE namespace = ? AND key = ?")
         .bind(namespace)
         .bind(key)
-        .fetch_optional(db)
+        .fetch_optional(&with_pool()?)
         .await?
         .ok_or_else(|| {
             PapError::NotFound(format!(
@@ -306,25 +289,18 @@ pub(crate) async fn get_object(
         })
 }
 
-pub(crate) async fn put_object(
-    db: &SqlitePool,
-    namespace: &str,
-    key: &[u8],
-    value: &[u8],
-) -> Result<(), Error> {
-    sqlx::query("INSERT OR REPLACE INTO objects (namespace, key, value) VALUES (?, ?, ?)")
-        .bind(namespace)
-        .bind(key)
-        .bind(value)
-        .execute(db)
-        .await?;
+pub(crate) async fn put_object(namespace: &str, key: &[u8], value: &[u8]) -> Result<()> {
+    sqlx::query("INSERT OR REPLACE INTO objects (namespace, key, value, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)")
+            .bind(namespace)
+            .bind(key)
+            .bind(value)
+            .execute(&with_pool()?)
+    .await?;
     Ok(())
 }
 
-pub(crate) async fn setup_pipeline(
-    db: &SqlitePool,
-    context: &pap_api::Context,
-) -> anyhow::Result<PipelineStatus> {
+pub(crate) async fn setup_pipeline(context: &pap_api::Context) -> anyhow::Result<PipelineStatus> {
+    let db = with_pool()?;
     let mut tx = db.begin().await?;
 
     let pipeline_id = sqlx::query_scalar::<_, u32>(
@@ -348,14 +324,16 @@ pub(crate) async fn setup_pipeline(
 
         for step in &job.steps {
             sqlx::query_scalar::<_, u32>(
-                "INSERT INTO steps (job_id, name, call, args) VALUES (?, ?, ?, ?) RETURNING id",
-            )
-            .bind(job_id)
-            .bind(&step.name)
-            .bind(&step.call)
-            .bind(serde_json::to_string(&step.args)?)
-            .fetch_one(&mut *tx)
-            .await?;
+                    "INSERT INTO steps (job_id, pipeline_id, name, call, args, io) VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+                )
+                .bind(job_id)
+                .bind(pipeline_id)
+                .bind(&step.name)
+                .bind(&step.call)
+                .bind(serde_json::to_string(&step.args)?)
+                .bind(serde_json::to_string(&step.io)?)
+                .fetch_one(&mut *tx)
+                .await?;
         }
     }
 
@@ -370,7 +348,8 @@ pub(crate) async fn setup_pipeline(
     })
 }
 
-pub(crate) async fn cancel_pipeline(db: &SqlitePool, id: u32) -> Result<(), Error> {
+pub(crate) async fn cancel_pipeline(id: u32) -> Result<()> {
+    let db = with_pool()?;
     let mut tx = db.begin().await?;
 
     sqlx::query("UPDATE pipelines SET execution_status = ? WHERE id = ?")
@@ -385,11 +364,19 @@ pub(crate) async fn cancel_pipeline(db: &SqlitePool, id: u32) -> Result<(), Erro
         .execute(&mut *tx)
         .await?;
 
+    // Also cancel steps directly by pipeline_id
+    sqlx::query("UPDATE steps SET status = ? WHERE pipeline_id = ?")
+        .bind(ExecutionStatus::Cancelled.to_string())
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+
     tx.commit().await?;
     Ok(())
 }
 
-pub(crate) async fn delete_pipeline(db: &SqlitePool, id: u32) -> Result<(), Error> {
+pub(crate) async fn delete_pipeline(id: u32) -> Result<()> {
+    let db = with_pool()?;
     let mut tx = db.begin().await?;
 
     // Delete steps belonging to jobs in this pipeline
@@ -412,4 +399,60 @@ pub(crate) async fn delete_pipeline(db: &SqlitePool, id: u32) -> Result<(), Erro
 
     tx.commit().await?;
     Ok(())
+}
+
+pub(crate) async fn cancel_job(id: u32) -> Result<()> {
+    let db = with_pool()?;
+    let mut tx = db.begin().await?;
+
+    // Cancel all steps belonging to this job
+    sqlx::query("UPDATE steps SET status = ? WHERE pipeline_id = ?")
+        .bind(ExecutionStatus::Cancelled.to_string())
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+
+    // Cancel the job itself
+    sqlx::query("UPDATE jobs SET status = ? WHERE pipeline_id = ?")
+        .bind(ExecutionStatus::Cancelled.to_string())
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+    Ok(())
+}
+
+pub(crate) async fn is_step_cancelled(step_id: u32) -> Result<bool> {
+    // Check step status
+    let step_status: String = sqlx::query_scalar("SELECT status FROM steps WHERE id = ?")
+        .bind(step_id)
+        .fetch_one(&with_pool()?)
+        .await?;
+
+    if ExecutionStatus::from_str(&step_status)? == ExecutionStatus::Cancelled {
+        return Ok(true);
+    }
+
+    // Check job status
+    let job_status: String = sqlx::query_scalar(
+        "SELECT j.status FROM jobs j JOIN steps s ON j.id = s.job_id WHERE s.id = ?"
+    )
+    .bind(step_id)
+    .fetch_one(&with_pool()?)
+    .await?;
+
+    if ExecutionStatus::from_str(&job_status)? == ExecutionStatus::Cancelled {
+        return Ok(true);
+    }
+
+    // Check pipeline status
+    let pipeline_status: String = sqlx::query_scalar(
+        "SELECT p.execution_status FROM pipelines p JOIN steps s ON p.id = s.pipeline_id WHERE s.id = ?"
+    )
+    .bind(step_id)
+    .fetch_one(&with_pool()?)
+    .await?;
+
+    Ok(ExecutionStatus::from_str(&pipeline_status)? == ExecutionStatus::Cancelled)
 }

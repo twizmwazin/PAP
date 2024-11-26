@@ -20,13 +20,15 @@ struct Config {
     database: String,
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     // Parse command line arguments
     let config = Config::parse();
 
     // Initialize logging
     env_logger::init();
+
+    log::info!("Starting server...");
 
     // Initialize the step executor registry
     let registry = builtin_executors();
@@ -36,12 +38,16 @@ async fn main() -> Result<()> {
         .connect(&format!("sqlite:{}", config.database))
         .await?;
 
+    log::info!("Connected to database");
+
     // Create server instance
     let server = PipelineServer::new(pool, registry).await?;
 
     // Set up transport
     let addr: SocketAddr = config.bind_addr.parse()?;
     let listener = tarpc::serde_transport::tcp::listen(addr, Json::default).await?;
+
+    log::info!("Server listening on {}", addr);
 
     // Start serving
     listener
@@ -56,7 +62,6 @@ async fn main() -> Result<()> {
         .for_each(|_| async {})
         .await;
 
-    println!("Server listening on {}", addr);
 
     // Keep the main thread running
     tokio::signal::ctrl_c().await?;

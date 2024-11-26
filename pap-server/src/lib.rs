@@ -1,3 +1,4 @@
+pub(crate) mod db;
 pub(crate) mod queries;
 pub mod server;
 pub mod step;

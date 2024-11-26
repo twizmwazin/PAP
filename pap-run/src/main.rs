@@ -11,7 +11,7 @@ use tarpc::{client, context, server::Channel};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let file = "../hello.yaml";
+    let file = "../sample.yaml";
 
     // Load config and create context
     let config_file = File::open(file).expect("Could not open file");

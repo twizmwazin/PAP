@@ -1,0 +1,3 @@
+[submodule "pap-server/icicle-emu"]
+	path = pap-server/icicle-emu
+	url = https://github.com/icicle-emu/icicle-emu.git

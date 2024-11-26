@@ -9,12 +9,23 @@ readme.workspace = true
 anyhow = { workspace = true }
 clap = { workspace = true }
 env_logger = { workspace = true }
+futures = "0.3.31"
+log = { workspace = true }
 pap-api = { path = "../pap-api", features = ["serde_json", "sqlx"] }
 tarpc = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-futures = "0.3.31"
 
+# Icicle fuzzer dependencies
+libafl = "0.14.0"
+libafl_bolts = "0.14.0"
+libafl_targets = "0.14.0"
+icicle_vm = { path = "../../icicle-emu/icicle-vm", package = "icicle-vm" }
+icicle_fuzzing = { path = "../../icicle-emu/icicle-fuzzing", package = "icicle-fuzzing" }
+pcode = { path = "../../icicle-emu/sleigh/pcode", package = "pcode" }
+mlua = { version = "0.10", features = ["lua54", "vendored", "anyhow"] }
+rhai = { version = "1.20.0", features = ["only_i64"] }

@@ -70,8 +70,8 @@ enum PipelineCommands {
         /// Pipeline ID
         id: u32,
     },
-    /// Show detailed summary of a pipeline
-    Summary {
+    /// Show detailed status of a pipeline
+    Status {
         /// Pipeline ID
         id: u32,
     },
@@ -158,8 +158,8 @@ async fn handle_pipeline_command(
             client.delete_pipeline(context::current(), id).await??;
             println!("Deleted pipeline {}", id);
         }
-        PipelineCommands::Summary { id } => {
-            print_summary(client, id).await?;
+        PipelineCommands::Status { id } => {
+            print_status(client, id).await?;
         }
     }
     Ok(())
@@ -227,7 +227,7 @@ async fn handle_object_command(
     Ok(())
 }
 
-async fn print_summary(client: &PapApiClient, pipeline_id: u32) -> anyhow::Result<()> {
+async fn print_status(client: &PapApiClient, pipeline_id: u32) -> anyhow::Result<()> {
     let pipeline = client
         .get_pipeline(context::current(), pipeline_id)
         .await??;

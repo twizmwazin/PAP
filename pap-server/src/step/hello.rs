@@ -9,8 +9,7 @@ impl StepExecutor for HelloStepExecutor {
 
     fn execute(&self, ctx: &mut StepContext) -> anyhow::Result<()> {
         let name = ctx
-            .args
-            .get("name")
+            .get_arg("name")
             .ok_or(anyhow::anyhow!("missing `name` argument"))?;
         let message = format!("Hello, {}!", name);
         ctx.log(&message);

@@ -1,47 +1,83 @@
 pub mod hello;
+pub mod icicle;
 
 use anyhow::Result;
-use sqlx::SqlitePool;
-use std::collections::HashMap;
+use pap_api::{PipelineStatus, StepStatus};
+use std::{collections::HashMap, sync::RwLock};
+use tokio::runtime::Handle;
 
 /// Context provided to a step during execution
 pub struct StepContext<'a> {
-    /// Arguments from the config
-    pub args: &'a HashMap<String, String>,
-    /// Database pool for storage operations
-    pool: &'a SqlitePool,
+    /// Step configuration and status
+    pub status: &'a StepStatus,
+    /// Overall pipeline configuration
+    pub pipeline_status: &'a PipelineStatus,
+    /// Runtime handle for async operations
+    rt_handle: Handle,
     /// Log buffer
-    log_buffer: Vec<u8>,
+    log_buffer: RwLock<Vec<u8>>,
+    /// Pipeline context
+    context: &'a pap_api::Context,
 }
 
 impl<'a> StepContext<'a> {
-    pub fn new(args: &'a HashMap<String, String>, pool: &'a SqlitePool) -> Self {
+    pub fn new(step: &'a StepStatus, pipeline_status: &'a PipelineStatus, context: &'a pap_api::Context) -> Self {
         Self {
-            args,
-            pool,
-            log_buffer: Vec::new(),
+            status: step,
+            pipeline_status,
+            rt_handle: Handle::current(),
+            log_buffer: RwLock::new(Vec::new()),
+            context,
         }
     }
 
-    pub async fn read_object(&self, namespace: &str, key: &str) -> Result<Vec<u8>> {
-        crate::queries::get_object(self.pool, namespace, key.as_bytes())
-            .await
+    pub fn write_object(&self, namespace: &str, key: &[u8], data: &[u8]) -> Result<()> {
+        self.rt_handle
+            .block_on(async { crate::queries::put_object(namespace, key, data).await })
             .map_err(Into::into)
     }
 
-    pub async fn write_object(&self, namespace: &str, key: &str, data: &[u8]) -> Result<()> {
-        crate::queries::put_object(self.pool, namespace, key.as_bytes(), data)
-            .await
+    pub fn read_object(&self, namespace: &str, key: &[u8]) -> Result<Vec<u8>> {
+        self.rt_handle
+            .block_on(async { crate::queries::get_object(namespace, key).await })
             .map_err(Into::into)
     }
 
-    pub fn log(&mut self, message: &str) {
-        self.log_buffer.extend_from_slice(message.as_bytes());
-        self.log_buffer.push(b'\n');
+    pub fn log(&self, message: &str) {
+        self.log_buffer.write().expect("log lock poisoned").extend_from_slice(message.as_bytes());
+        self.log_buffer.write().expect("log lock poisoned").push(b'\n');
     }
 
-    pub(crate) fn take_log(self) -> Vec<u8> {
-        self.log_buffer
+    pub(crate) fn get_log(&self) -> Vec<u8> {
+        self.log_buffer.read().expect("log lock poisoned").clone()
+    }
+
+    // Convenience getters
+    pub fn is_cancelled(&self) -> bool {
+        self.rt_handle
+            .block_on(async { crate::queries::is_step_cancelled(self.status.id).await })
+            .unwrap_or(false)
+    }
+
+    pub fn has_arg(&self, name: &str) -> bool {
+        self.status.config.args.contains_key(name)
+    }
+
+    pub fn get_arg(&self, name: &str) -> Option<&str> {
+        self.status.config.args.get(name).map(|s| s.as_str())
+    }
+
+    pub fn has_io(&self, name: &str) -> bool {
+        self.status.config.io.contains_key(name)
+    }
+
+    pub fn get_io(&self, name: &str) -> Option<&str> {
+        self.status.config.io.get(name).map(|s| s.as_str())
+    }
+
+    /// Get a file from the context by name
+    pub fn get_file(&self, name: &str) -> Option<&[u8]> {
+        self.context.files().get(name).map(|v| v.as_slice())
     }
 }
 
@@ -75,6 +111,7 @@ pub fn builtin_executors() -> StepExecutorRegistry {
     let mut registry = StepExecutorRegistry::default();
 
     registry.register(hello::HelloStepExecutor);
+    registry.register(icicle::IcicleFuzzerExecutor);
 
     registry
 }
