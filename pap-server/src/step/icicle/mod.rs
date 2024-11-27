@@ -40,10 +40,6 @@ impl StepExecutor for IcicleFuzzerExecutor {
             .as_ref()
             .ok_or_else(|| anyhow!("project {} has no loader configuration", project_name))?;
 
-        if loader.base_address == 0 {
-            bail!("project {} has invalid base address: 0", project_name);
-        }
-
         if loader.stack_address == 0 {
             bail!("project {} has invalid stack address: 0", project_name);
         }
